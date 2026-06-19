@@ -26,7 +26,8 @@ Fault tolerance
   tools (e.g. a watch-dog script, a shared-drive alert) can detect it.
 - The scheduler process itself never crashes on a bad run; only a
   startup-validation failure or Ctrl+C will stop it.
-- Log files rotate at 10 MB and keep 5 archives so disk space is bounded.
+- Log files are written to the ``logs/`` folder with daily filenames
+  (``log_MMDDYYYY.log``). A new file is created automatically each day.
 """
 
 import argparse
@@ -36,7 +37,6 @@ import os
 import sys
 import threading
 from datetime import datetime
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -141,15 +141,11 @@ def validate_config(cfg: configparser.ConfigParser) -> None:
 
 
 def setup_logging(cfg: configparser.ConfigParser) -> None:
-    """Configure the root logger with a stdout handler and a rotating file handler.
+    """Configure the root logger with a stdout handler and a daily file handler.
 
-    Log level and log file path are read from the ``[logging]`` section of
-    ``config.ini``. The file handler rotates at 10 MB and keeps 5 archives
-    so log disk usage is bounded.
-
-    Relative log file paths are resolved against the script's directory,
-    not the working directory, so the log file always ends up next to
-    scheduler.py regardless of how the process is launched.
+    Log level is read from the ``[logging]`` section of ``config.ini``.
+    Log files are written to the ``logs/`` folder (next to scheduler.py) with
+    filenames of the form ``log_MMDDYYYY.log``, one file per calendar day.
 
     Args:
         cfg: Parsed :class:`configparser.ConfigParser` from ``config.ini``.
@@ -160,26 +156,17 @@ def setup_logging(cfg: configparser.ConfigParser) -> None:
         logging.INFO,
     )
 
-    log_file = cfg.get("logging", "file", fallback="scheduler.log")
-    # Anchor relative paths to the script directory.
-    if not os.path.isabs(log_file):
-        log_file = str(_SCRIPT_DIR / log_file)
-
-    # Ensure the log directory exists.
-    Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+    logs_dir = _SCRIPT_DIR / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    today_stamp = datetime.now().strftime("%m%d%Y")
+    log_file = str(logs_dir / f"log_{today_stamp}.log")
 
     fmt = "%(asctime)s [%(levelname)-8s] %(name)s — %(message)s"
     datefmt = "%Y-%m-%d %H:%M:%S"
 
     handlers: list[logging.Handler] = [
         logging.StreamHandler(sys.stdout),
-        # Rotate at 10 MB; keep 5 backups (scheduler.log, .log.1 … .log.5)
-        RotatingFileHandler(
-            log_file,
-            encoding="utf-8",
-            maxBytes=10 * 1024 * 1024,
-            backupCount=5,
-        ),
+        logging.FileHandler(log_file, encoding="utf-8"),
     ]
     logging.basicConfig(level=level, format=fmt, datefmt=datefmt, handlers=handlers)
 
