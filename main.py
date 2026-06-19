@@ -367,6 +367,24 @@ def clean_rate(value: str) -> str:
     return value.replace(",", "").strip()
 
 
+def normalize_rate(value: str) -> str:
+    """Parse a rate string and reformat it to 6 decimal places.
+
+    Ensures consistent float precision across all sources regardless of how
+    many decimal places the source page happened to display.
+
+    Args:
+        value: Cleaned numeric rate string (e.g. ``"83.47"`` or ``"1234.5``).
+
+    Returns:
+        Rate formatted to 6 decimal places (e.g. ``"83.470000"``).
+
+    Raises:
+        ValueError: If ``value`` cannot be parsed as a float.
+    """
+    return f"{float(value):.6f}"
+
+
 def timestamp_is_today(timestamp: str) -> bool:
     """Return True if the timestamp string represents today's UTC date.
 
@@ -663,7 +681,7 @@ def parse_nrb(html: str) -> Optional[tuple[str, str]]:
         # NRB quotes NPR per 1 USD, so rate = buy / unit.
         # For unit=1 this is a no-op; kept for correctness with other pairs.
         rate = buy / unit
-        return f"{rate:.4f}", date_str
+        return str(rate), date_str
 
     logger.debug("parse_nrb: USD row not found in table.")
     return None
@@ -808,6 +826,15 @@ def collect_one(
         return SourceResult(src_type=src_type, status="PARSE_FAIL")
 
     rate, timestamp = parsed
+    try:
+        rate = normalize_rate(rate)
+    except ValueError:
+        logger.warning(
+            "    [%s/%s] PARSE_FAIL — rate value '%s' is not numeric.",
+            quote, src_type, rate,
+        )
+        return SourceResult(src_type=src_type, status="PARSE_FAIL")
+
     logger.info(
         "    [%s/%s] OK — rate=%s  timestamp=%s.",
         quote, src_type, rate, timestamp,
