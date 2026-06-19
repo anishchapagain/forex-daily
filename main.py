@@ -1053,14 +1053,24 @@ def main() -> None:
     )
     args = argp.parse_args()
 
-    # Install a basic logging handler for standalone CLI use.
-    # When main.py is imported by scheduler.py, basicConfig is a no-op because
-    # scheduler.py already attached handlers to the root logger.
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)-8s] %(name)s — %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    # Install handlers for standalone CLI use only.
+    # When main.py is imported by scheduler.py the root logger already has
+    # handlers attached, so this block is skipped entirely.
+    if not logging.root.handlers:
+        _logs_dir = Path(__file__).parent.resolve() / "logs"
+        _logs_dir.mkdir(parents=True, exist_ok=True)
+        _log_file = str(_logs_dir / f"log_{datetime.now().strftime('%m%d%Y')}.log")
+        _fmt = "%(asctime)s [%(levelname)-8s] %(name)s — %(message)s"
+        _datefmt = "%Y-%m-%d %H:%M:%S"
+        logging.basicConfig(
+            level=logging.INFO,
+            format=_fmt,
+            datefmt=_datefmt,
+            handlers=[
+                logging.StreamHandler(sys.stdout),
+                logging.FileHandler(_log_file, encoding="utf-8"),
+            ],
+        )
 
     # Read retry configuration from config.ini (silently use defaults if absent).
     cfg = configparser.ConfigParser()
