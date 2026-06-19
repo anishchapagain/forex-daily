@@ -943,24 +943,63 @@ def _col(src_type: str, attribute: str) -> str:
     return f"{label}_{attribute}"
 
 
+def build_table(rows: list[Result]) -> tuple[list[str], list[list[str]]]:
+    """Convert collection results into a header row and data rows.
+
+    Shared by :func:`write_csv` and the OneDrive uploader so both outputs
+    are guaranteed to use an identical column layout.
+
+    Columns: ``date``, ``base_currency``, ``quote_currency``,
+    then all ``<Source>_rate`` columns, all ``<Source>_timestamp`` columns,
+    all ``<Source>_status`` columns (in :data:`SOURCE_ORDER`), then
+    ``overall_status``.  Only source types present in at least one row are
+    included.
+
+    Args:
+        rows: List of :class:`Result` objects as returned by
+            :func:`collect_all`.
+
+    Returns:
+        ``(headers, data_rows)`` where ``headers`` is a list of column-name
+        strings and ``data_rows`` is a list of lists, one per result row,
+        with values in the same order as ``headers``.
+    """
+    present_types: list[str] = [
+        t for t in SOURCE_ORDER
+        if any(sr.src_type == t for r in rows for sr in r.sources)
+    ]
+
+    fixed     = ["date", "base_currency", "quote_currency"]
+    rate_cols = [_col(t, "rate")      for t in present_types]
+    ts_cols   = [_col(t, "timestamp") for t in present_types]
+    st_cols   = [_col(t, "status")    for t in present_types]
+    headers   = fixed + rate_cols + ts_cols + st_cols + ["overall_status"]
+
+    data_rows: list[list[str]] = []
+    for row in rows:
+        by_type: dict[str, SourceResult] = {sr.src_type: sr for sr in row.sources}
+        record: list[str] = [row.date, row.base_currency, row.quote_currency]
+        for t in present_types:
+            sr = by_type.get(t)
+            record.append(sr.rate      if sr else "")
+        for t in present_types:
+            sr = by_type.get(t)
+            record.append(sr.timestamp if sr else "")
+        for t in present_types:
+            sr = by_type.get(t)
+            record.append(sr.status    if sr else "")
+        record.append(row.overall_status)
+        data_rows.append(record)
+
+    return headers, data_rows
+
+
 def write_csv(path: str, rows: list[Result]) -> None:
     """Write collection results to a wide-format CSV file.
 
-    Columns are grouped by attribute rather than by source, giving a layout
-    that is easy to scan and compare across providers::
-
-        date, base_currency, quote_currency,
-        XE_rate, Netdania_rate, Investing_rate, ...,   ← all rates together
-        XE_timestamp, Netdania_timestamp, ...,          ← all timestamps together
-        XE_status, Netdania_status, ...,                ← all statuses together
-        overall_status
-
-    Only source types that appear in at least one row are included as
-    columns. Rows that do not use a particular source leave those cells
-    empty.
-
-    The file is flushed and synced to disk before returning so that a
-    subsequent crash does not leave a partial or zero-byte CSV behind.
+    Delegates column layout to :func:`build_table` then writes to disk with
+    up to 3 retry attempts on transient I/O errors. The file is flushed and
+    synced before returning so a subsequent crash cannot leave a partial file.
 
     Args:
         path: Destination file path. Created or overwritten on each call.
@@ -974,66 +1013,35 @@ def write_csv(path: str, rows: list[Result]) -> None:
     if not rows:
         logger.warning("write_csv: called with an empty rows list — writing header only.")
 
-    # Determine which source types actually appear across all rows, preserving
-    # the canonical display order defined in SOURCE_ORDER.
-    present_types: list[str] = [
-        t for t in SOURCE_ORDER
-        if any(sr.src_type == t for r in rows for sr in r.sources)
-    ]
+    headers, data_rows = build_table(rows)
 
-    # Columns: fixed prefix | all rates | all timestamps | all statuses | overall
-    fixed_fields  = ["date", "base_currency", "quote_currency"]
-    rate_fields   = [_col(t, "rate")      for t in present_types]
-    ts_fields     = [_col(t, "timestamp") for t in present_types]
-    status_fields = [_col(t, "status")    for t in present_types]
-    fieldnames    = fixed_fields + rate_fields + ts_fields + status_fields + ["overall_status"]
-
-    # Retry the disk write up to 3 times to handle transient I/O errors.
     max_write_attempts = 3
     last_write_exc: Optional[Exception] = None
 
     for write_attempt in range(1, max_write_attempts + 1):
         try:
             with open(path, "w", newline="", encoding="utf-8") as fh:
-                writer = csv.DictWriter(fh, fieldnames=fieldnames, extrasaction="ignore")
-                writer.writeheader()
-
-                for row in rows:
-                    # Index this row's source results by their type key for O(1) lookup.
-                    by_type: dict[str, SourceResult] = {sr.src_type: sr for sr in row.sources}
-
-                    record: dict[str, str] = {
-                        "date":           row.date,
-                        "base_currency":  row.base_currency,
-                        "quote_currency": row.quote_currency,
-                        "overall_status": row.overall_status,
-                    }
-
-                    for src_type in present_types:
-                        sr = by_type.get(src_type)
-                        # Leave cells empty (not NONE) when this currency has no such source.
-                        record[_col(src_type, "rate")]      = sr.rate      if sr else ""
-                        record[_col(src_type, "timestamp")] = sr.timestamp if sr else ""
-                        record[_col(src_type, "status")]    = sr.status    if sr else ""
-
-                    writer.writerow(record)
-
-                # Force all data to disk before returning so a subsequent crash
-                # cannot leave a truncated or zero-byte file.
+                writer = csv.writer(fh)
+                writer.writerow(headers)
+                writer.writerows(data_rows)
                 fh.flush()
                 os.fsync(fh.fileno())
 
+            present_types = [
+                t for t in SOURCE_ORDER
+                if any(sr.src_type == t for r in rows for sr in r.sources)
+            ]
             logger.info(
                 "CSV written: %s  (%d row(s), sources: %s).",
                 path, len(rows),
                 ", ".join(SOURCE_DISPLAY_NAMES.get(t, t) for t in present_types),
             )
-            return  # Success — exit the retry loop.
+            return
 
         except OSError as exc:
             last_write_exc = exc
             if write_attempt < max_write_attempts:
-                wait = 2 ** (write_attempt - 1)  # 1 s, 2 s
+                wait = 2 ** (write_attempt - 1)
                 logger.warning(
                     "CSV write attempt %d/%d failed — retrying in %d s: %s",
                     write_attempt, max_write_attempts, wait, exc,
@@ -1045,8 +1053,6 @@ def write_csv(path: str, rows: list[Result]) -> None:
                     max_write_attempts, exc,
                 )
 
-    # All write attempts exhausted — re-raise so the caller (scheduler) can
-    # log it as a run-level failure and alert operators.
     raise last_write_exc  # type: ignore[misc]
 
 

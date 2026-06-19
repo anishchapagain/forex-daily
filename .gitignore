@@ -29,6 +29,10 @@ Thumbs.db
 *.swp
 *.swo
 
+# Credentials
+.env
+
 # Logs
 *.log
 logs/
+requirements.zip

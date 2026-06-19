@@ -42,7 +42,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 
-from main import collect_all, load_currencies, write_csv
+from main import build_table, collect_all, load_currencies, write_csv
+from onedrive_upload import upload_to_excel
 
 # Script directory — used to resolve relative paths regardless of the
 # working directory from which the scheduler is launched.
@@ -279,6 +280,24 @@ def run_collection(cfg: configparser.ConfigParser, tz: ZoneInfo) -> None:
             )
         except Exception as exc:
             run_error.append(exc)
+            return
+
+        # OneDrive upload — runs only when collection + CSV succeeded.
+        # A failure here is logged but never propagates; the scheduler
+        # continues and the local CSV is always the source of truth.
+        try:
+            headers, data_rows = build_table(rows)
+            upload_to_excel(headers, data_rows)
+        except EnvironmentError as exc:
+            logging.warning(
+                "OneDrive upload skipped — missing credentials: %s", exc,
+            )
+        except Exception as exc:
+            logging.error(
+                "OneDrive upload FAILED (CSV is still intact): %s — %s",
+                type(exc).__name__, exc,
+                exc_info=exc,
+            )
 
     worker = threading.Thread(target=_run, daemon=True, name="fx-collect")
     worker.start()
