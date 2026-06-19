@@ -1,0 +1,126 @@
+# currencies.toml
+#
+# Defines the set of USD currency corridors and the web sources from which
+# each rate is scraped.
+#
+# Structure
+# ---------
+# Each top-level section header is the ISO 4217 quote-currency code.
+# The base currency is always USD (fixed in main.py).
+#
+# Each section contains a single key "sources", which is an array of
+# inline tables. Every inline table MUST supply both keys:
+#   type  — parser key recognised by main.py (see list below)
+#   url   — full URL to fetch
+#
+# ALL sources for every currency are queried on every run. Results are
+# recorded independently in the wide-format CSV (XE_rate, Wise_rate, …).
+#
+# Supported parser types
+# ----------------------
+#   xe        xe.com currency converter            (validates today's UTC date)
+#   wise      wise.com mid-market rate page        (no timestamp; plain HTML)
+#   nrb       Nepal Rastra Bank daily forex table  (buy rate; validates page date)
+#   netdania  netdania.com forex quotes page        (time-only, no date check)
+#   investing investing.com currency pair page      (time-only, no date check)
+#   ibrlive   ibrlive.com live INR page             (no timestamp)
+#   sampath   sampath.lk exchange rate table        (no timestamp)
+#
+# Adding a new currency
+# ---------------------
+# 1. Add a section: [KRW]
+# 2. Add at least one source: sources = [{type = "xe", url = "..."}]
+# 3. If using a new site, implement parse_<type>(html, quote) in main.py.
+#
+# Adding a new source to an existing currency
+# -------------------------------------------
+# Append an inline table to the sources array. The new source will be
+# queried automatically on the next run with no other changes required.
+
+[AUD]
+sources = [
+    {type = "xe",    url = "https://www.xe.com/currencyconverter/convert/?Amount=1&From=USD&To=AUD"},
+    {type = "wise",  url = "https://wise.com/us/currency-converter/usd-to-aud-rate"},
+    {type = "netdania", url = "https://www.netdania.com/quotes/forex-dollar-asia-pacific"},
+]
+
+[CNY]
+sources = [
+    {type = "xe",   url = "https://www.xe.com/currencyconverter/convert/?Amount=1&From=USD&To=CNY"},
+    {type = "wise", url = "https://wise.com/us/currency-converter/usd-to-cny-rate"},
+]
+
+[INR]
+sources = [
+    {type = "xe",   url = "https://www.xe.com/currencyconverter/convert/?Amount=1&From=USD&To=INR"},
+    {type = "wise", url = "https://wise.com/us/currency-converter/usd-to-inr-rate"},
+]
+
+[IDR]
+sources = [
+    {type = "xe",   url = "https://www.xe.com/currencyconverter/convert/?Amount=1&From=USD&To=IDR"},
+    {type = "wise", url = "https://wise.com/us/currency-converter/usd-to-idr-rate"},
+]
+
+[JPY]
+sources = [
+    {type = "xe",   url = "https://www.xe.com/currencyconverter/convert/?Amount=1&From=USD&To=JPY"},
+    {type = "wise", url = "https://wise.com/us/currency-converter/usd-to-jpy-rate"},
+]
+
+[MYR]
+sources = [
+    {type = "xe",   url = "https://www.xe.com/currencyconverter/convert/?Amount=1&From=USD&To=MYR"},
+    {type = "wise", url = "https://wise.com/us/currency-converter/usd-to-myr-rate"},
+]
+
+[NZD]
+sources = [
+    {type = "xe",    url = "https://www.xe.com/currencyconverter/convert/?Amount=1&From=USD&To=NZD"},
+    {type = "wise",  url = "https://wise.com/us/currency-converter/usd-to-nzd-rate"},
+    {type = "netdania", url = "https://www.netdania.com/quotes/forex-dollar-asia-pacific"},
+]
+
+[PHP]
+sources = [
+    {type = "xe",   url = "https://www.xe.com/currencyconverter/convert/?Amount=1&From=USD&To=PHP"},
+    {type = "wise", url = "https://wise.com/us/currency-converter/usd-to-php-rate"},
+]
+
+[SGD]
+sources = [
+    {type = "xe",    url = "https://www.xe.com/currencyconverter/convert/?Amount=1&From=USD&To=SGD"},
+    {type = "wise",  url = "https://wise.com/us/currency-converter/usd-to-sgd-rate"},
+    {type = "netdania", url = "https://www.netdania.com/quotes/forex-dollar-asia-pacific"},
+]
+
+[LKR]
+sources = [
+    {type = "xe",   url = "https://www.xe.com/currencyconverter/convert/?Amount=1&From=USD&To=LKR"},
+    {type = "wise", url = "https://wise.com/us/currency-converter/usd-to-lkr-rate"},
+]
+
+[THB]
+sources = [
+    {type = "xe",   url = "https://www.xe.com/currencyconverter/convert/?Amount=1&From=USD&To=THB"},
+    {type = "wise", url = "https://wise.com/us/currency-converter/usd-to-thb-rate"},
+]
+
+[VND]
+sources = [
+    {type = "xe",   url = "https://www.xe.com/currencyconverter/convert/?Amount=1&From=USD&To=VND"},
+    {type = "wise", url = "https://wise.com/us/currency-converter/usd-to-vnd-rate"},
+]
+
+[NPR]
+sources = [
+    {type = "xe",   url = "https://www.xe.com/currencyconverter/convert/?Amount=1&From=USD&To=NPR"},
+    {type = "wise", url = "https://wise.com/us/currency-converter/usd-to-npr-rate"},
+    {type = "nrb",  url = "https://www.nrb.org.np/forex/"},
+]
+
+[HKD]
+sources = [
+    {type = "xe",   url = "https://www.xe.com/currencyconverter/convert/?Amount=1&From=USD&To=HKD"},
+    {type = "wise", url = "https://wise.com/us/currency-converter/usd-to-hkd-rate"},
+]
